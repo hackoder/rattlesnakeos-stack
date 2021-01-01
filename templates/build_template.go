@@ -42,6 +42,11 @@ case "${DEVICE}" in
     DEVICE_COMMON=sunfish
     AVB_MODE=vbmeta_chained_v2
     ;;
+  redfin)
+    DEVICE_FAMILY=redfin
+    DEVICE_COMMON=redfin
+    AVB_MODE=vbmeta_chained_v2
+    ;;
   *)
     echo "error: unknown device ${DEVICE}"
     exit 1
@@ -122,7 +127,7 @@ BUILD_REASON=""
 # urls
 MANIFEST_URL="https://android.googlesource.com/platform/manifest"
 STACK_URL_LATEST="https://api.github.com/repos/dan-v/rattlesnakeos-stack/releases/latest"
-RATTLESNAKEOS_LATEST_JSON="https://raw.githubusercontent.com/RattlesnakeOS/latest/${ANDROID_VERSION}/latest.json"
+RATTLESNAKEOS_LATEST_JSON="https://raw.githubusercontent.com/hackoder/rattlesnakeos-latest/${ANDROID_VERSION}/latest.json"
 
 STACK_UPDATE_MESSAGE=
 LATEST_STACK_VERSION=
@@ -603,11 +608,12 @@ aosp_repo_modifications() {
 <manifest>
   <remote name="github" fetch="https://github.com/RattlesnakeOS/" revision="${ANDROID_VERSION}" />
   <remote name="fdroid" fetch="https://gitlab.com/fdroid/" />
+  <remote name="sdh4" fetch="https://github.com/sdh4/" />
 
   <project path="packages/apps/Updater" name="platform_packages_apps_Updater" remote="github" />
   <project path="packages/apps/F-Droid" name="platform_external_fdroid" remote="github" />
   <project path="packages/apps/F-DroidPrivilegedExtension" name="privileged-extension" remote="fdroid" revision="refs/tags/${FDROID_PRIV_EXT_VERSION}" />
-  <project path="vendor/android-prepare-vendor" name="android-prepare-vendor" remote="github" />
+  <project path="vendor/android-prepare-vendor" name="android-prepare-vendor" remote="sdh4" revision="sdh4-redfin-android11" />
   <project path="external/chromium" name="platform_external_chromium" remote="github" />
 
   <remove-project name="platform/external/chromium-webview" />
@@ -643,7 +649,8 @@ setup_vendor() {
   log_header "${FUNCNAME[0]}"
 
   # new dependency to extract ota partitions
-  sudo DEBIAN_FRONTEND=noninteractive apt-get -y install python-protobuf
+  sudo DEBIAN_FRONTEND=noninteractive apt-get -y install python-protobuf python3-protobuf python3-pip
+  pip3 install --user protobuf -U
 
   # get vendor files (with timeout)
   timeout 30m "${BUILD_DIR}/vendor/android-prepare-vendor/execute-all.sh" --debugfs --yes --device "${DEVICE}" \
@@ -698,14 +705,24 @@ patch_11_issues() {
     # ID0:Face:Strong
     biometric_sensors="0:8:15"
   fi
-  sed -i '$ s/^<\/resources>//' "${BUILD_DIR}/device/google/${DEVICE_COMMON}/overlay/frameworks/base/core/res/res/values/config.xml"
-  cat <<EOF >> "${BUILD_DIR}/device/google/${DEVICE_COMMON}/overlay/frameworks/base/core/res/res/values/config.xml"
+  if [ "${DEVICE_COMMON}" == "redfin" ]
+  then
+    sed -i '$ s/^<\/resources>//' "${BUILD_DIR}/device/google/${DEVICE_COMMON}/${DEVICE_COMMON}/overlay/frameworks/base/core/res/res/values/config.xml"
+    cat <<EOF >> "${BUILD_DIR}/device/google/${DEVICE_COMMON}/${DEVICE_COMMON}/overlay/frameworks/base/core/res/res/values/config.xml"
     <string-array name="config_biometric_sensors" translatable="false" >
         <item>${biometric_sensors}</item>
     </string-array>
 </resources>
 EOF
-
+  else
+    sed -i '$ s/^<\/resources>//' "${BUILD_DIR}/device/google/${DEVICE_COMMON}/overlay/frameworks/base/core/res/res/values/config.xml"
+    cat <<EOF >> "${BUILD_DIR}/device/google/${DEVICE_COMMON}/overlay/frameworks/base/core/res/res/values/config.xml"
+    <string-array name="config_biometric_sensors" translatable="false" >
+        <item>${biometric_sensors}</item>
+    </string-array>
+</resources>
+EOF
+  fi
 }
 
 patch_launcher() {
@@ -804,6 +821,8 @@ patch_device_config() {
   sed -i 's@PRODUCT_MODEL := AOSP on flame@PRODUCT_MODEL := Pixel 4@' "${BUILD_DIR}/device/google/coral/aosp_flame.mk" || true
 
   sed -i 's@PRODUCT_MODEL := AOSP on sunfish@PRODUCT_MODEL := Pixel 4A@' "${BUILD_DIR}/device/google/sunfish/aosp_sunfish.mk" || true
+
+  sed -i 's@PRODUCT_MODEL := AOSP on redfin@PRODUCT_MODEL := Pixel 5@' "${BUILD_DIR}/device/google/redfin/aosp_redfin.mk" || true
 }
 
 patch_add_apps() {
